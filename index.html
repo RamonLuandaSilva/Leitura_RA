@@ -99,10 +99,6 @@ footer-actions{display:flex;gap:10px}
   <div class="leitura-texto" id="texto-leitura"></div>
   <div class="region-tag" id="tag-regiao">região do olhar: —</div>
   <div class="gesto-flag" id="flag-pausa">Pausa ativada — retomando em <span id="cont-pausa">10</span>s</div>
-  <div class="row">
-    <button id="btn-recalibrar">Recalibrar</button>
-    <button id="btn-sair">Sair da leitura</button>
-  </div>
 </section>
 
 <video id="video" playsinline></video>
@@ -126,8 +122,6 @@ $('cfg-pausa').onclick=e=>{if(e.target.dataset.v){pausaGesto=+e.target.dataset.v
 $('btn-iniciar').onclick=()=>show('tela-config');
 $('btn-comecar').onclick=iniciarCamera;
 $('btn-retry').onclick=iniciarCamera;
-$('btn-sair').onclick=()=>{show('tela-inicial')};
-$('btn-recalibrar').onclick=()=>calibrar();
 
 // ---------- texto de leitura (conteúdo mockado, sem direitos autorais) ----------
 const paragrafosTexto=[
@@ -163,7 +157,7 @@ let camera, faceMesh, hands, videoEl=$('video'), pip=$('video-pip'), mk=$('marke
 let gazeCenterY=null, gazeTopY=null, gazeBottomY=null;
 let faceOk=false, currentGazeY=null, region='—';
 let handSince=null, handCooldownUntil=0, pausado=false, pausaTimeoutId=null, pausaIntervalId=null;
-let tickTimer=null, tempoNaLeitura=0;
+let tickTimer=null, tempoNaLeitura=0, regiaoAnterior=null, tempoNaRegiao=0;
 
 function eyeVerticalRatio(lm){
   // média das duas iris relativas ao topo/base da pálpebra de cada olho
@@ -266,7 +260,7 @@ function classificarRegiao(y){
 
 function iniciarLeitura(){
   state='LEITURA'; renderTexto(); pausado=false;
-  show('tela-leitura'); tempoNaLeitura=0;
+  show('tela-leitura'); tempoNaLeitura=0; tempoNaRegiao=0; regiaoAnterior=null;
   clearInterval(tickTimer);
   tickTimer=setInterval(tick,200);
 }
@@ -277,14 +271,21 @@ function tick(){
   $('tag-regiao').textContent='região do olhar: '+region;
   const el=$('texto-leitura');
   if(!faceOk){ $('st-timer').textContent='pausado (sem rosto)'; return; }
-  if(region==='central'){
+
+  if(region!==regiaoAnterior){ regiaoAnterior=region; tempoNaRegiao=0; tempoNaLeitura=0; }
+  else { tempoNaRegiao+=0.2; }
+
+  if(region==='inferior' || region==='superior'){
+    if(tempoNaRegiao<1){
+      $('st-timer').textContent='mantenha o olhar…';
+      return;
+    }
     tempoNaLeitura+=0.2;
     $('st-timer').textContent=`rolagem em ${Math.max(0,intervaloAvanco-tempoNaLeitura).toFixed(1)}s`;
-    if(tempoNaLeitura>=intervaloAvanco){ el.scrollBy({top:el.clientHeight*0.6,behavior:'smooth'}); tempoNaLeitura=0; }
-  } else if(region==='inferior'){
-    el.scrollTop+=4; tempoNaLeitura=0; $('st-timer').textContent='rolando para baixo…';
-  } else if(region==='superior'){
-    el.scrollTop-=4; tempoNaLeitura=0; $('st-timer').textContent='rolando para cima…';
+    if(tempoNaLeitura>=intervaloAvanco){
+      el.scrollBy({top: region==='inferior'?el.clientHeight*0.5:-el.clientHeight*0.5, behavior:'smooth'});
+      tempoNaLeitura=0;
+    }
   } else {
     $('st-timer').textContent='—';
   }
