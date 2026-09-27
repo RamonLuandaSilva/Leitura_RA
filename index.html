@@ -39,9 +39,6 @@ canvas#marker{position:fixed;top:calc(12px + env(safe-area-inset-top,0));right:1
   scroll-behavior:smooth;padding-right:6px}
 .leitura-texto p{color:var(--ink);margin:0 0 1em}
 .region-tag{font-size:.75rem;color:var(--muted);text-align:right}
-.gesto-flag{background:var(--accent);color:#1a120a;padding:8px 12px;border-radius:8px;font-weight:600;
-  text-align:center;display:none}
-.gesto-flag.show{display:block}
 .cal-point{position:fixed;width:22px;height:22px;border-radius:50%;background:var(--accent);
   transform:translate(-50%,-50%)}
 .cal-label{position:fixed;top:calc(50% + 30px);left:50%;transform:translateX(-50%);color:var(--muted);font-size:.9rem}
@@ -53,8 +50,8 @@ footer-actions{display:flex;gap:10px}
 
 <section id="tela-inicial" class="screen active">
   <h1>Leitura pelo Olhar</h1>
-  <p>Protótipo experimental: o texto rola conforme para onde você olha — para baixo ao olhar a parte inferior da tela, para cima ao olhar a parte superior, e avança sozinho aos poucos enquanto você lê o centro. Levante a mão para pausar. Nenhum vídeo sai do seu dispositivo.</p>
-  <div class="eye-demo">👁 olhar cima/baixo → rola &nbsp;·&nbsp; 🖐 gesto → pausa</div>
+  <p>Protótipo experimental: o texto rola conforme para onde você olha — para baixo ao olhar a parte inferior da tela, para cima ao olhar a parte superior. A qualquer momento você pode tocar e rolar a tela manualmente para pausar o controle automático. Nenhum vídeo sai do seu dispositivo.</p>
+  <div class="eye-demo">👁 olhar cima/baixo → rola</div>
   <div class="card hint">Requer permissão de câmera e um navegador atual (Chrome recomendado, funciona em desktop e celular).</div>
   <button class="primary" id="btn-iniciar">Iniciar leitura</button>
 </section>
@@ -65,13 +62,6 @@ footer-actions{display:flex;gap:10px}
     <p>Intervalo de avanço automático (enquanto o olhar estiver na área de leitura):</p>
     <div class="row" id="cfg-intervalo">
       <button class="choice" data-v="5">5s</button>
-      <button class="choice on" data-v="10">10s</button>
-      <button class="choice" data-v="15">15s</button>
-    </div>
-  </div>
-  <div class="card">
-    <p>Duração da pausa ao detectar um gesto de mão:</p>
-    <div class="row" id="cfg-pausa">
       <button class="choice on" data-v="10">10s</button>
       <button class="choice" data-v="15">15s</button>
     </div>
@@ -93,12 +83,10 @@ footer-actions{display:flex;gap:10px}
 <section id="tela-leitura" class="screen">
   <div class="status-bar">
     <span id="st-eye">Eye tracking: iniciando…</span>
-    <span id="st-hand">Mão: —</span>
     <span id="st-timer">Rolagem: —</span>
   </div>
   <div class="leitura-texto" id="texto-leitura"></div>
   <div class="region-tag" id="tag-regiao">região do olhar: —</div>
-  <div class="gesto-flag" id="flag-pausa">Pausa ativada — retomando em <span id="cont-pausa">10</span>s</div>
 </section>
 
 <video id="video" playsinline></video>
@@ -107,16 +95,13 @@ footer-actions{display:flex;gap:10px}
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 <script>
 const $=id=>document.getElementById(id);
 function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));$(id).classList.add('active');}
 
 // ---------- config ----------
-let intervaloAvanco=10, pausaGesto=10;
+let intervaloAvanco=10;
 $('cfg-intervalo').onclick=e=>{if(e.target.dataset.v){intervaloAvanco=+e.target.dataset.v;
-  [...e.currentTarget.children].forEach(b=>b.classList.toggle('on',b===e.target));}};
-$('cfg-pausa').onclick=e=>{if(e.target.dataset.v){pausaGesto=+e.target.dataset.v;
   [...e.currentTarget.children].forEach(b=>b.classList.toggle('on',b===e.target));}};
 
 $('btn-iniciar').onclick=()=>show('tela-config');
@@ -153,10 +138,9 @@ function renderTexto(){
 
 // ---------- estado ----------
 let state='INICIAL';
-let camera, faceMesh, hands, videoEl=$('video'), pip=$('video-pip'), mk=$('marker').getContext('2d');
+let camera, faceMesh, videoEl=$('video'), pip=$('video-pip'), mk=$('marker').getContext('2d');
 let gazeCenterY=null, gazeTopY=null, gazeBottomY=null;
 let faceOk=false, currentGazeY=null, region='—';
-let handSince=null, handCooldownUntil=0, pausado=false, pausaTimeoutId=null, pausaIntervalId=null;
 let tickTimer=null, tempoNaLeitura=0, regiaoAnterior=null, tempoNaRegiao=0;
 
 function eyeVerticalRatio(lm){
@@ -171,27 +155,13 @@ function eyeVerticalRatio(lm){
 function onFace(results){
   if(!results.multiFaceLandmarks || !results.multiFaceLandmarks.length){
     faceOk=false; currentGazeY=null;
-    if(state==='LEITURA'||state==='PAUSA_GESTO'){$('st-eye').textContent='Sem rosto detectado';$('st-eye').className='warn';}
+    if(state==='LEITURA'){$('st-eye').textContent='Sem rosto detectado';$('st-eye').className='warn';}
     return;
   }
   faceOk=true;
   currentGazeY=eyeVerticalRatio(results.multiFaceLandmarks[0]);
   if(state==='LEITURA'){$('st-eye').textContent='Olhar detectado';$('st-eye').className='on';}
   if(state==='CALIBRACAO' && calResolve) calResolve(currentGazeY);
-}
-
-function onHands(results){
-  const detectado = results.multiHandLandmarks && results.multiHandLandmarks.length>0;
-  const now=performance.now();
-  if(state!=='LEITURA'){handSince=null;return;}
-  if(detectado && now>handCooldownUntil){
-    if(!handSince) handSince=now;
-    $('st-hand').textContent='Mão: detectando…';
-    if(now-handSince>=600 && !pausado) ativarPausaGesto();
-  } else if(!detectado){
-    handSince=null;
-    if(!pausado) $('st-hand').textContent='Mão: —';
-  }
 }
 
 async function iniciarCamera(){
@@ -206,10 +176,7 @@ async function iniciarCamera(){
   faceMesh=new FaceMesh({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`});
   faceMesh.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:0.6,minTrackingConfidence:0.6});
   faceMesh.onResults(onFace);
-  hands=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
-  hands.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:0.6,minTrackingConfidence:0.5});
-  hands.onResults(onHands);
-  camera=new Camera(videoEl,{onFrame:async()=>{await faceMesh.send({image:videoEl});await hands.send({image:videoEl});},
+  camera=new Camera(videoEl,{onFrame:async()=>{await faceMesh.send({image:videoEl});},
     width:480,height:360});
   camera.start();
   calibrar();
@@ -259,14 +226,13 @@ function classificarRegiao(y){
 }
 
 function iniciarLeitura(){
-  state='LEITURA'; renderTexto(); pausado=false;
+  state='LEITURA'; renderTexto();
   show('tela-leitura'); tempoNaLeitura=0; tempoNaRegiao=0; regiaoAnterior=null;
   clearInterval(tickTimer);
   tickTimer=setInterval(tick,200);
 }
 
 function tick(){
-  if(pausado) return;
   region=classificarRegiao(currentGazeY);
   $('tag-regiao').textContent='região do olhar: '+region;
   const el=$('texto-leitura');
@@ -283,24 +249,12 @@ function tick(){
     tempoNaLeitura+=0.2;
     $('st-timer').textContent=`rolagem em ${Math.max(0,intervaloAvanco-tempoNaLeitura).toFixed(1)}s`;
     if(tempoNaLeitura>=intervaloAvanco){
-      el.scrollBy({top: region==='inferior'?el.clientHeight*0.5:-el.clientHeight*0.5, behavior:'smooth'});
+      el.scrollBy({top: region==='inferior'?el.clientHeight*0.9:-el.clientHeight*0.9, behavior:'smooth'});
       tempoNaLeitura=0;
     }
   } else {
     $('st-timer').textContent='—';
   }
-}
-
-function ativarPausaGesto(){
-  pausado=true; state='PAUSA_GESTO';
-  $('st-hand').textContent='Mão: gesto confirmado'; $('flag-pausa').classList.add('show');
-  let restante=pausaGesto; $('cont-pausa').textContent=restante;
-  pausaIntervalId=setInterval(()=>{restante--;$('cont-pausa').textContent=Math.max(restante,0);
-    if(restante<=0){clearInterval(pausaIntervalId);}},1000);
-  pausaTimeoutId=setTimeout(()=>{
-    pausado=false; state='LEITURA'; $('flag-pausa').classList.remove('show');
-    $('st-hand').textContent='Mão: —'; handCooldownUntil=performance.now()+1500; handSince=null;
-  }, pausaGesto*1000);
 }
 
 // desenha marcador simples de onde o sistema acredita que o olhar está (dentro do PIP)
