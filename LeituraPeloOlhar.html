@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Leitura pelo Olhar</title>
+<style>
+:root{
+  --bg:#12181c; --panel:#1a2329; --ink:#eae6da; --muted:#8fa3ac;
+  --accent:#c98a4b; --accent2:#4d8a82; --danger:#c96b4b; --line:#2a353b;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,Segoe UI,Roboto,sans-serif;
+  padding-top:env(safe-area-inset-top,0);padding-bottom:env(safe-area-inset-bottom,0)}
+.screen{display:none;min-height:100dvh;padding:24px 20px;max-width:640px;margin:0 auto;flex-direction:column;justify-content:center;gap:18px}
+.screen.active{display:flex}
+h1{font-size:1.6rem;margin:0 0 4px;font-weight:700}
+p{color:var(--muted);line-height:1.5;margin:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+  border-radius:8px;padding:12px 18px}
+button.primary{background:var(--accent);color:#1a120a;border-color:var(--accent);font-weight:600}
+button.choice{margin:4px}
+button.choice.on{background:var(--accent2);color:#08120f;border-color:var(--accent2)}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.eye-demo{font-size:2.2rem;text-align:center;opacity:.85}
+video{display:none}
+#video-pip{width:120px;border-radius:8px;border:1px solid var(--line);transform:scaleX(-1);position:fixed;
+  top:calc(12px + env(safe-area-inset-top,0));right:12px;z-index:5}
+canvas#marker{position:fixed;top:calc(12px + env(safe-area-inset-top,0));right:12px;width:120px;height:90px;
+  pointer-events:none;z-index:6}
+#tela-leitura{max-width:720px}
+.status-bar{display:flex;justify-content:space-between;align-items:center;font-size:.8rem;color:var(--muted);
+  border-bottom:1px solid var(--line);padding-bottom:10px}
+.status-bar span.on{color:var(--accent2)}
+.status-bar span.warn{color:var(--danger)}
+.leitura-texto{font-family:Georgia,serif;font-size:1.25rem;line-height:1.75;min-height:200px}
+.region-tag{font-size:.75rem;color:var(--muted);text-align:right}
+.gesto-flag{background:var(--accent);color:#1a120a;padding:8px 12px;border-radius:8px;font-weight:600;
+  text-align:center;display:none}
+.gesto-flag.show{display:block}
+.cal-point{position:fixed;width:22px;height:22px;border-radius:50%;background:var(--accent);
+  transform:translate(-50%,-50%)}
+.cal-label{position:fixed;top:calc(50% + 30px);left:50%;transform:translateX(-50%);color:var(--muted);font-size:.9rem}
+footer-actions{display:flex;gap:10px}
+.hint{font-size:.8rem;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<section id="tela-inicial" class="screen active">
+  <h1>Leitura pelo Olhar</h1>
+  <p>Protótipo experimental: a leitura avança sozinha enquanto seus olhos permanecem na área de texto, e você pausa levantando a mão para a webcam. Nenhum vídeo sai do seu dispositivo — tudo roda localmente no navegador.</p>
+  <div class="eye-demo">👁 olhar → avança &nbsp;·&nbsp; 🖐 gesto → pausa</div>
+  <div class="card hint">Requer permissão de câmera e um navegador atual (Chrome recomendado, funciona em desktop e celular).</div>
+  <button class="primary" id="btn-iniciar">Iniciar leitura</button>
+</section>
+
+<section id="tela-config" class="screen">
+  <h1>Configuração</h1>
+  <div class="card">
+    <p>Intervalo de avanço automático (enquanto o olhar estiver na área de leitura):</p>
+    <div class="row" id="cfg-intervalo">
+      <button class="choice" data-v="5">5s</button>
+      <button class="choice on" data-v="10">10s</button>
+      <button class="choice" data-v="15">15s</button>
+    </div>
+  </div>
+  <div class="card">
+    <p>Duração da pausa ao detectar um gesto de mão:</p>
+    <div class="row" id="cfg-pausa">
+      <button class="choice on" data-v="10">10s</button>
+      <button class="choice" data-v="15">15s</button>
+    </div>
+  </div>
+  <button class="primary" id="btn-comecar">Começar leitura</button>
+</section>
+
+<section id="tela-calibracao" class="screen">
+  <h1>Calibração do olhar</h1>
+  <p id="cal-instrucao">Olhe fixamente para o ponto laranja e aguarde.</p>
+</section>
+
+<section id="tela-erro" class="screen">
+  <h1>Não foi possível acessar a câmera</h1>
+  <p id="erro-msg">Verifique a permissão de câmera do navegador e tente novamente.</p>
+  <button class="primary" id="btn-retry">Tentar novamente</button>
+</section>
+
+<section id="tela-leitura" class="screen">
+  <div class="status-bar">
+    <span id="st-eye">Eye tracking: iniciando…</span>
+    <span id="st-hand">Mão: —</span>
+    <span id="st-timer">Próximo trecho: —</span>
+  </div>
+  <div class="leitura-texto" id="texto-leitura"></div>
+  <div class="region-tag" id="tag-regiao">região do olhar: —</div>
+  <div class="gesto-flag" id="flag-pausa">Pausa ativada — retomando em <span id="cont-pausa">10</span>s</div>
+  <div class="row">
+    <button id="btn-recalibrar">Recalibrar</button>
+    <button id="btn-sair">Sair da leitura</button>
+  </div>
+</section>
+
+<video id="video" playsinline></video>
+<video id="video-pip" playsinline muted></video>
+<canvas id="marker" width="120" height="90"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script>
+const $=id=>document.getElementById(id);
+function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));$(id).classList.add('active');}
+
+// ---------- config ----------
+let intervaloAvanco=10, pausaGesto=10;
+$('cfg-intervalo').onclick=e=>{if(e.target.dataset.v){intervaloAvanco=+e.target.dataset.v;
+  [...e.currentTarget.children].forEach(b=>b.classList.toggle('on',b===e.target));}};
+$('cfg-pausa').onclick=e=>{if(e.target.dataset.v){pausaGesto=+e.target.dataset.v;
+  [...e.currentTarget.children].forEach(b=>b.classList.toggle('on',b===e.target));}};
+
+$('btn-iniciar').onclick=()=>show('tela-config');
+$('btn-comecar').onclick=iniciarCamera;
+$('btn-retry').onclick=iniciarCamera;
+$('btn-sair').onclick=()=>{show('tela-inicial')};
+$('btn-recalibrar').onclick=()=>calibrar();
+
+// ---------- texto de leitura (conteúdo de exemplo, não protegido por direitos autorais) ----------
+const trechos=[
+ "O oceano cobre a maior parte da superfície do planeta, mas grande parte dele ainda não foi mapeada em detalhe.",
+ "Correntes marítimas transportam calor entre regiões distantes, influenciando o clima de continentes inteiros.",
+ "Nas profundezas, onde a luz do sol não chega, algumas criaturas produzem sua própria luz para se comunicar.",
+ "Recifes de coral funcionam como cidades submersas, abrigando milhares de espécies em poucos metros quadrados.",
+ "Tempestades se formam quando o ar quente sobe rapidamente sobre águas aquecidas, ganhando força ao girar.",
+ "Cientistas usam bóias e satélites para acompanhar a temperatura da água em tempo real, todos os dias.",
+ "Migrações de baleias percorrem milhares de quilômetros, guiadas por rotas que se repetem ano após ano.",
+ "A pressão nas partes mais fundas do oceano é tão alta que poucos equipamentos resistem a ela sem se deformar.",
+];
+let idx=0;
+function renderTrecho(){$('texto-leitura').textContent=trechos[idx%trechos.length];}
+
+// ---------- estado ----------
+let state='INICIAL';
+let camera, faceMesh, hands, videoEl=$('video'), pip=$('video-pip'), mk=$('marker').getContext('2d');
+let gazeCenterY=null, gazeTopY=null, gazeBottomY=null;
+let faceOk=false, currentGazeY=null, region='—';
+let handSince=null, handCooldownUntil=0, pausado=false, pausaTimeoutId=null, pausaIntervalId=null;
+let tickTimer=null, tempoNaLeitura=0;
+
+function eyeVerticalRatio(lm){
+  // média das duas iris relativas ao topo/base da pálpebra de cada olho
+  const rTop=lm[159],rBot=lm[145],rIris=lm[468];
+  const lTop=lm[386],lBot=lm[374],lIris=lm[473];
+  const rR=(rIris.y-rTop.y)/((rBot.y-rTop.y)||1e-4);
+  const lR=(lIris.y-lTop.y)/((lBot.y-lTop.y)||1e-4);
+  return (rR+lR)/2;
+}
+
+function onFace(results){
+  if(!results.multiFaceLandmarks || !results.multiFaceLandmarks.length){
+    faceOk=false; currentGazeY=null;
+    if(state==='LEITURA'||state==='PAUSA_GESTO'){$('st-eye').textContent='Sem rosto detectado';$('st-eye').className='warn';}
+    return;
+  }
+  faceOk=true;
+  currentGazeY=eyeVerticalRatio(results.multiFaceLandmarks[0]);
+  if(state==='LEITURA'){$('st-eye').textContent='Olhar detectado';$('st-eye').className='on';}
+  if(state==='CALIBRACAO' && calResolve) calResolve(currentGazeY);
+}
+
+function onHands(results){
+  const detectado = results.multiHandLandmarks && results.multiHandLandmarks.length>0;
+  const now=performance.now();
+  if(state!=='LEITURA'){handSince=null;return;}
+  if(detectado && now>handCooldownUntil){
+    if(!handSince) handSince=now;
+    $('st-hand').textContent='Mão: detectando…';
+    if(now-handSince>=600 && !pausado) ativarPausaGesto();
+  } else if(!detectado){
+    handSince=null;
+    if(!pausado) $('st-hand').textContent='Mão: —';
+  }
+}
+
+async function iniciarCamera(){
+  show('tela-calibracao'); $('cal-instrucao').textContent='Solicitando acesso à câmera…';
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:480,height:360},audio:false});
+    videoEl.srcObject=stream; pip.srcObject=stream; await videoEl.play(); await pip.play();
+  }catch(e){
+    $('erro-msg').textContent='Erro: '+e.message+'. Confirme a permissão de câmera nas configurações do navegador.';
+    show('tela-erro'); return;
+  }
+  faceMesh=new FaceMesh({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`});
+  faceMesh.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:0.6,minTrackingConfidence:0.6});
+  faceMesh.onResults(onFace);
+  hands=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
+  hands.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:0.6,minTrackingConfidence:0.5});
+  hands.onResults(onHands);
+  camera=new Camera(videoEl,{onFrame:async()=>{await faceMesh.send({image:videoEl});await hands.send({image:videoEl});},
+    width:480,height:360});
+  camera.start();
+  calibrar();
+}
+
+// ---------- calibração ----------
+const pontos=[
+ {x:'50%',y:'12%',label:'centro superior',grupo:'top'},
+ {x:'12%',y:'12%',label:'canto superior esquerdo',grupo:'top'},
+ {x:'88%',y:'12%',label:'canto superior direito',grupo:'top'},
+ {x:'50%',y:'50%',label:'centro',grupo:'mid'},
+ {x:'12%',y:'88%',label:'canto inferior esquerdo',grupo:'bot'},
+ {x:'88%',y:'88%',label:'canto inferior direito',grupo:'bot'},
+];
+let calResolve=null;
+async function calibrar(){
+  show('tela-calibracao');
+  const amostras={top:[],mid:[],bot:[]};
+  document.querySelectorAll('.cal-point,.cal-label').forEach(n=>n.remove());
+  for(const p of pontos){
+    $('cal-instrucao').textContent=`Olhe para: ${p.label}`;
+    const dot=document.createElement('div'); dot.className='cal-point'; dot.style.left=p.x; dot.style.top=p.y;
+    document.body.appendChild(dot);
+    await new Promise(r=>setTimeout(r,900)); // tempo para fixar o olhar
+    const leituras=[];
+    const start=performance.now();
+    while(performance.now()-start<700){
+      const v=await new Promise(res=>{calResolve=res; setTimeout(()=>res(currentGazeY),40);});
+      if(v!=null) leituras.push(v);
+      await new Promise(r=>setTimeout(r,40));
+    }
+    calResolve=null;
+    if(leituras.length) amostras[p.grupo].push(leituras.reduce((a,b)=>a+b,0)/leituras.length);
+    dot.remove();
+  }
+  const media=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0.5;
+  gazeTopY=media(amostras.top); gazeCenterY=media(amostras.mid); gazeBottomY=media(amostras.bot);
+  iniciarLeitura();
+}
+
+// ---------- leitura ----------
+function classificarRegiao(y){
+  if(y==null||gazeCenterY==null) return '—';
+  const dTop=Math.abs(y-gazeTopY), dMid=Math.abs(y-gazeCenterY), dBot=Math.abs(y-gazeBottomY);
+  if(dMid<=dTop && dMid<=dBot) return 'central';
+  return dTop<dBot?'superior':'inferior';
+}
+
+function iniciarLeitura(){
+  state='LEITURA'; idx=0; renderTrecho(); pausado=false;
+  show('tela-leitura'); tempoNaLeitura=0;
+  clearInterval(tickTimer);
+  tickTimer=setInterval(tick,200);
+}
+
+function tick(){
+  if(pausado) return;
+  region=classificarRegiao(currentGazeY);
+  $('tag-regiao').textContent='região do olhar: '+region;
+  if(!faceOk){ $('st-timer').textContent='pausado (sem rosto)'; return; }
+  if(region==='central'){
+    tempoNaLeitura+=0.2;
+    $('st-timer').textContent=`próximo trecho em ${Math.max(0,intervaloAvanco-tempoNaLeitura).toFixed(1)}s`;
+    if(tempoNaLeitura>=intervaloAvanco){ idx++; renderTrecho(); tempoNaLeitura=0; }
+  } else {
+    tempoNaLeitura=Math.max(0,tempoNaLeitura-0.1);
+    $('st-timer').textContent='olhe para o texto para avançar';
+  }
+}
+
+function ativarPausaGesto(){
+  pausado=true; state='PAUSA_GESTO';
+  $('st-hand').textContent='Mão: gesto confirmado'; $('flag-pausa').classList.add('show');
+  let restante=pausaGesto; $('cont-pausa').textContent=restante;
+  pausaIntervalId=setInterval(()=>{restante--;$('cont-pausa').textContent=Math.max(restante,0);
+    if(restante<=0){clearInterval(pausaIntervalId);}},1000);
+  pausaTimeoutId=setTimeout(()=>{
+    pausado=false; state='LEITURA'; $('flag-pausa').classList.remove('show');
+    $('st-hand').textContent='Mão: —'; handCooldownUntil=performance.now()+1500; handSince=null;
+  }, pausaGesto*1000);
+}
+
+// desenha marcador simples de onde o sistema acredita que o olhar está (dentro do PIP)
+setInterval(()=>{
+  mk.clearRect(0,0,120,90);
+  if(currentGazeY==null) return;
+  const y=Math.min(0.95,Math.max(0.05,currentGazeY))*90;
+  mk.fillStyle='rgba(201,138,75,0.85)';
+  mk.beginPath(); mk.arc(60,y,6,0,7); mk.fill();
+},100);
+</script>
+</body>
+</html>
