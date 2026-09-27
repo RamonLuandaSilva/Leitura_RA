@@ -35,7 +35,9 @@ canvas#marker{position:fixed;top:calc(12px + env(safe-area-inset-top,0));right:1
   border-bottom:1px solid var(--line);padding-bottom:10px}
 .status-bar span.on{color:var(--accent2)}
 .status-bar span.warn{color:var(--danger)}
-.leitura-texto{font-family:Georgia,serif;font-size:1.25rem;line-height:1.75;min-height:200px}
+.leitura-texto{font-family:Georgia,serif;font-size:1.2rem;line-height:1.8;height:52vh;overflow-y:auto;
+  scroll-behavior:smooth;padding-right:6px}
+.leitura-texto p{color:var(--ink);margin:0 0 1em}
 .region-tag{font-size:.75rem;color:var(--muted);text-align:right}
 .gesto-flag{background:var(--accent);color:#1a120a;padding:8px 12px;border-radius:8px;font-weight:600;
   text-align:center;display:none}
@@ -51,8 +53,8 @@ footer-actions{display:flex;gap:10px}
 
 <section id="tela-inicial" class="screen active">
   <h1>Leitura pelo Olhar</h1>
-  <p>Protótipo experimental: a leitura avança sozinha enquanto seus olhos permanecem na área de texto, e você pausa levantando a mão para a webcam. Nenhum vídeo sai do seu dispositivo — tudo roda localmente no navegador.</p>
-  <div class="eye-demo">👁 olhar → avança &nbsp;·&nbsp; 🖐 gesto → pausa</div>
+  <p>Protótipo experimental: o texto rola conforme para onde você olha — para baixo ao olhar a parte inferior da tela, para cima ao olhar a parte superior, e avança sozinho aos poucos enquanto você lê o centro. Levante a mão para pausar. Nenhum vídeo sai do seu dispositivo.</p>
+  <div class="eye-demo">👁 olhar cima/baixo → rola &nbsp;·&nbsp; 🖐 gesto → pausa</div>
   <div class="card hint">Requer permissão de câmera e um navegador atual (Chrome recomendado, funciona em desktop e celular).</div>
   <button class="primary" id="btn-iniciar">Iniciar leitura</button>
 </section>
@@ -92,7 +94,7 @@ footer-actions{display:flex;gap:10px}
   <div class="status-bar">
     <span id="st-eye">Eye tracking: iniciando…</span>
     <span id="st-hand">Mão: —</span>
-    <span id="st-timer">Próximo trecho: —</span>
+    <span id="st-timer">Rolagem: —</span>
   </div>
   <div class="leitura-texto" id="texto-leitura"></div>
   <div class="region-tag" id="tag-regiao">região do olhar: —</div>
@@ -127,19 +129,33 @@ $('btn-retry').onclick=iniciarCamera;
 $('btn-sair').onclick=()=>{show('tela-inicial')};
 $('btn-recalibrar').onclick=()=>calibrar();
 
-// ---------- texto de leitura (conteúdo de exemplo, não protegido por direitos autorais) ----------
-const trechos=[
- "O oceano cobre a maior parte da superfície do planeta, mas grande parte dele ainda não foi mapeada em detalhe.",
- "Correntes marítimas transportam calor entre regiões distantes, influenciando o clima de continentes inteiros.",
- "Nas profundezas, onde a luz do sol não chega, algumas criaturas produzem sua própria luz para se comunicar.",
- "Recifes de coral funcionam como cidades submersas, abrigando milhares de espécies em poucos metros quadrados.",
- "Tempestades se formam quando o ar quente sobe rapidamente sobre águas aquecidas, ganhando força ao girar.",
- "Cientistas usam bóias e satélites para acompanhar a temperatura da água em tempo real, todos os dias.",
- "Migrações de baleias percorrem milhares de quilômetros, guiadas por rotas que se repetem ano após ano.",
- "A pressão nas partes mais fundas do oceano é tão alta que poucos equipamentos resistem a ela sem se deformar.",
+// ---------- texto de leitura (conteúdo mockado, sem direitos autorais) ----------
+const paragrafosTexto=[
+"O oceano cobre a maior parte da superfície do planeta, mas grande parte dele ainda não foi mapeada em detalhe.",
+"Correntes marítimas transportam calor entre regiões distantes, influenciando o clima de continentes inteiros.",
+"Nas profundezas, onde a luz do sol não chega, algumas criaturas produzem sua própria luz para se comunicar.",
+"Recifes de coral funcionam como cidades submersas, abrigando milhares de espécies em poucos metros quadrados.",
+"Tempestades se formam quando o ar quente sobe rapidamente sobre águas aquecidas, ganhando força ao girar.",
+"Cientistas usam bóias e satélites para acompanhar a temperatura da água em tempo real, todos os dias.",
+"Migrações de baleias percorrem milhares de quilômetros, guiadas por rotas que se repetem ano após ano.",
+"A pressão nas partes mais fundas do oceano é tão alta que poucos equipamentos resistem a ela sem se deformar.",
+"Bancos de areia se movem lentamente com o tempo, moldados por ondas que nunca param de agir sobre a costa.",
+"Peixes que vivem em cavernas submersas perderam a visão ao longo de gerações, adaptando-se à escuridão total.",
+"O plâncton, apesar de microscópico, sustenta praticamente toda a cadeia alimentar marinha conhecida.",
+"Vulcões submersos formam ilhas novas ao longo de milhares de anos, expelindo lava que esfria em contato com a água.",
+"Marés são causadas principalmente pela atração gravitacional da Lua, variando conforme sua posição no céu.",
+"Embarcações modernas usam sonar para mapear o relevo do fundo do mar com uma precisão impressionante.",
+"Algumas espécies de tartarugas marinhas retornam à mesma praia onde nasceram para colocar seus próprios ovos.",
+"Áreas de ressurgência trazem água fria e rica em nutrientes das profundezas até a superfície do oceano.",
+"A salinidade da água varia entre regiões, afetando diretamente quais espécies conseguem sobreviver ali.",
+"Redes de pesca sustentável tentam equilibrar a atividade econômica com a preservação dos ecossistemas marinhos.",
+"Geleiras que se rompem no mar liberam blocos de gelo capazes de flutuar por milhares de quilômetros.",
+"Expedições científicas continuam descobrindo novas espécies em regiões do oceano nunca antes exploradas.",
 ];
-let idx=0;
-function renderTrecho(){$('texto-leitura').textContent=trechos[idx%trechos.length];}
+function renderTexto(){
+  $('texto-leitura').innerHTML=paragrafosTexto.map(p=>`<p>${p}</p>`).join('');
+  $('texto-leitura').scrollTop=0;
+}
 
 // ---------- estado ----------
 let state='INICIAL';
@@ -249,7 +265,7 @@ function classificarRegiao(y){
 }
 
 function iniciarLeitura(){
-  state='LEITURA'; idx=0; renderTrecho(); pausado=false;
+  state='LEITURA'; renderTexto(); pausado=false;
   show('tela-leitura'); tempoNaLeitura=0;
   clearInterval(tickTimer);
   tickTimer=setInterval(tick,200);
@@ -259,14 +275,18 @@ function tick(){
   if(pausado) return;
   region=classificarRegiao(currentGazeY);
   $('tag-regiao').textContent='região do olhar: '+region;
+  const el=$('texto-leitura');
   if(!faceOk){ $('st-timer').textContent='pausado (sem rosto)'; return; }
   if(region==='central'){
     tempoNaLeitura+=0.2;
-    $('st-timer').textContent=`próximo trecho em ${Math.max(0,intervaloAvanco-tempoNaLeitura).toFixed(1)}s`;
-    if(tempoNaLeitura>=intervaloAvanco){ idx++; renderTrecho(); tempoNaLeitura=0; }
+    $('st-timer').textContent=`rolagem em ${Math.max(0,intervaloAvanco-tempoNaLeitura).toFixed(1)}s`;
+    if(tempoNaLeitura>=intervaloAvanco){ el.scrollBy({top:el.clientHeight*0.6,behavior:'smooth'}); tempoNaLeitura=0; }
+  } else if(region==='inferior'){
+    el.scrollTop+=4; tempoNaLeitura=0; $('st-timer').textContent='rolando para baixo…';
+  } else if(region==='superior'){
+    el.scrollTop-=4; tempoNaLeitura=0; $('st-timer').textContent='rolando para cima…';
   } else {
-    tempoNaLeitura=Math.max(0,tempoNaLeitura-0.1);
-    $('st-timer').textContent='olhe para o texto para avançar';
+    $('st-timer').textContent='—';
   }
 }
 
